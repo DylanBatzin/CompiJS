@@ -1,0 +1,256 @@
+package com.example.jscompiler;
+
+import java_cup.runtime.*;
+import java.util.List;
+import java.util.ArrayList;
+
+parser code {:
+    public void report_error(String message, Object info) {
+        StringBuilder m = new StringBuilder("Error de sintaxis");
+        if (info instanceof Symbol) {
+            Symbol s = (Symbol) info;
+            if (s.left >= 0) {
+                m.append(" en linea ").append(s.left + 1);
+                if (s.right >= 0) {
+                    m.append(", columna ").append(s.right + 1);
+                }
+            }
+            if (s.value != null) {
+                m.append(" cerca de '").append(s.value).append("'");
+            }
+        }
+        m.append(" : ").append(message);
+        System.err.println(m.toString());
+    }
+
+    public void report_fatal_error(String message, Object info) {
+        report_error(message, info);
+        throw new RuntimeException("Error fatal de sintaxis: " + message);
+    }
+:};
+
+terminal VAR, LET, CONST;
+terminal IF, ELSE;
+terminal FUNCTION, RETURN;
+terminal TRUE, FALSE, NULL;
+
+terminal String IDENTIFIER;
+terminal Integer NUMBER;
+terminal Double FLOAT_LITERAL;
+terminal String STRING_LITERAL;
+
+terminal PLUS, MINUS, MULTIPLY, DIVIDE;
+terminal ASSIGN;
+terminal EQUAL, STRICT_EQUAL, NOT_EQUAL, STRICT_NOT_EQUAL;
+terminal GT, LT, GTE, LTE;
+terminal AND, OR, NOT;
+terminal M, DCAM, HM, KM, CM, DCM, MM, FOR, WHILE;
+
+terminal LPAREN, RPAREN;
+terminal LBRACE, RBRACE;
+terminal PUNTOCOMA, COMA;
+terminal DOT;
+terminal COLON;
+
+non terminal Object program;
+non terminal Object statement_list;
+non terminal Object statement;
+non terminal Object variable_declaration;
+non terminal Object expression;
+non terminal Object assignment_expression;
+non terminal Object logical_or_expression;
+non terminal Object logical_and_expression;
+non terminal Object equality_expression;
+non terminal Object relational_expression;
+non terminal Object additive_expression;
+non terminal Object multiplicative_expression;
+non terminal Object unary_expression;
+non terminal Object call_expression;
+non terminal Object member_expression;
+non terminal Object primary_expression;
+non terminal Object parenthesized_expression;
+
+non terminal List<Object> arguments;
+non terminal List<Object> expression_list_for_args;
+
+non terminal Object if_statement;
+non terminal Object block;
+non terminal Object function_declaration;
+non terminal List<String> parameter_list_opt;
+non terminal List<String> parameter_list;
+
+non terminal Object object_literal;
+non terminal Object property_assignment_list;
+non terminal Object property_assignment;
+
+precedence right ASSIGN;
+precedence left OR;
+precedence left AND;
+precedence left EQUAL, NOT_EQUAL, STRICT_EQUAL, STRICT_NOT_EQUAL;
+precedence left GT, LT, GTE, LTE;
+precedence left PLUS, MINUS;
+precedence left MULTIPLY, DIVIDE;
+precedence right NOT;
+precedence left DOT;
+precedence nonassoc ELSE;
+
+start with program;
+
+program ::= statement_list:sl
+    {: System.out.println("Análisis sintáctico completado exitosamente."); :}
+    ;
+
+statement_list ::=
+    statement_list statement
+    | /* vacío */
+    ;
+
+statement ::=
+    variable_declaration
+    | expression:e PUNTOCOMA
+    | if_statement
+    | block
+    | function_declaration
+    | RETURN expression:e PUNTOCOMA
+    | RETURN PUNTOCOMA
+    | PUNTOCOMA
+    ;
+
+block ::=
+    LBRACE statement_list RBRACE
+    ;
+
+variable_declaration ::=
+    LET IDENTIFIER:id PUNTOCOMA
+    | LET IDENTIFIER:id ASSIGN expression:e PUNTOCOMA
+    | CONST IDENTIFIER:id ASSIGN expression:e PUNTOCOMA
+    | VAR IDENTIFIER:id PUNTOCOMA
+    | VAR IDENTIFIER:id ASSIGN expression:e PUNTOCOMA
+    ;
+
+if_statement ::=
+    IF LPAREN expression:e RPAREN statement:s
+    | IF LPAREN expression:e RPAREN statement:s1 ELSE statement:s2
+    ;
+
+expression ::=
+    assignment_expression
+    ;
+
+assignment_expression ::=
+    member_expression:me ASSIGN expression:e
+    | logical_or_expression
+    ;
+
+logical_or_expression ::=
+    logical_or_expression:lo OR logical_and_expression:la
+    | logical_and_expression
+    ;
+
+logical_and_expression ::=
+    logical_and_expression:la AND equality_expression:eq
+    | equality_expression
+    ;
+
+equality_expression ::=
+    equality_expression:eq EQUAL relational_expression:re
+    | equality_expression:eq NOT_EQUAL relational_expression:re
+    | equality_expression:eq STRICT_EQUAL relational_expression:re
+    | equality_expression:eq STRICT_NOT_EQUAL relational_expression:re
+    | relational_expression
+    ;
+
+relational_expression ::=
+    relational_expression:re LT additive_expression:ae
+    | relational_expression:re GT additive_expression:ae
+    | relational_expression:re LTE additive_expression:ae
+    | relational_expression:re GTE additive_expression:ae
+    | additive_expression
+    ;
+
+additive_expression ::=
+    additive_expression:ae PLUS multiplicative_expression:me
+    | additive_expression:ae MINUS multiplicative_expression:me
+    | multiplicative_expression
+    ;
+
+multiplicative_expression ::=
+    multiplicative_expression:me MULTIPLY unary_expression:ue
+    | multiplicative_expression:me DIVIDE unary_expression:ue
+    | unary_expression
+    ;
+
+unary_expression ::=
+    NOT unary_expression:ue
+    | MINUS unary_expression:ue
+    | call_expression
+    ;
+
+call_expression ::=
+    member_expression:me arguments:args
+    | member_expression
+    ;
+
+member_expression ::=
+    member_expression:me DOT IDENTIFIER:id
+    | primary_expression
+    ;
+
+primary_expression ::=
+    IDENTIFIER:id
+    | NUMBER:n
+    | FLOAT_LITERAL:f
+    | STRING_LITERAL:s
+    | TRUE
+    | FALSE
+    | NULL
+    | parenthesized_expression
+    ;
+
+parenthesized_expression ::=
+    LPAREN expression:e RPAREN
+    | LPAREN object_literal:obj RPAREN
+    ;
+
+arguments ::=
+    LPAREN RPAREN
+    | LPAREN expression_list_for_args:args RPAREN
+    ;
+
+expression_list_for_args ::=
+    expression:e
+    {: List<Object> list = new ArrayList<>(); list.add(e); RESULT = list; :}
+    | expression_list_for_args:list COMA expression:e
+    {: list.add(e); RESULT = list; :}
+    ;
+
+function_declaration ::=
+    FUNCTION IDENTIFIER:id LPAREN parameter_list_opt:params RPAREN block:b
+    ;
+
+parameter_list_opt ::=
+    parameter_list:pl
+    | {: RESULT = new ArrayList<String>(); :}
+    ;
+
+parameter_list ::=
+    IDENTIFIER:id
+    {: List<String> list = new ArrayList<>(); list.add(id); RESULT = list; :}
+    | parameter_list:pl COMA IDENTIFIER:id
+    {: pl.add(id); RESULT = pl; :}
+    ;
+
+object_literal ::=
+    LBRACE RBRACE
+    | LBRACE property_assignment_list:pl RBRACE
+    ;
+
+property_assignment_list ::=
+    property_assignment:pa
+    | property_assignment_list:pl COMA property_assignment:pa
+    ;
+
+property_assignment ::=
+    IDENTIFIER:id COLON expression:e
+    | STRING_LITERAL:str COLON expression:e
+    ;
